@@ -1,0 +1,54 @@
+From 4f981a85925f15052f3a622a6fa92bc64992b0dd Mon Sep 17 00:00:00 2001
+From: Sergey Olkhovnikov <sergeyo@zeptolab.com>
+Date: Tue, 18 Dec 2018 12:25:51 +0300
+Subject: [PATCH] Replace `random_shuffle` with `shuffle` to support C++17
+
+---
+ wykobi_minimum_bounding_ball.inl | 13 ++++++++++---
+ 1 file changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/wykobi_minimum_bounding_ball.inl b/wykobi_minimum_bounding_ball.inl
+index 76e501e..04b2712 100644
+--- a/wykobi_minimum_bounding_ball.inl
++++ b/wykobi_minimum_bounding_ball.inl
+@@ -25,6 +25,7 @@
+ #include <algorithm>
+ #include <vector>
+ #include <iterator>
++#include <random>
+ 
+ 
+ namespace wykobi
+@@ -62,7 +63,9 @@ namespace wykobi
+ 
+             std::copy(begin,end,std::back_inserter(point_list));
+ 
+-            std::random_shuffle(point_list.begin(),point_list.end());
++            std::random_device random_device;
++            std::mt19937 random_engine(random_device());
++            std::shuffle(point_list.begin(),point_list.end(),random_engine);
+ 
+             circle = make_circle(*point_list.begin(),*(point_list.begin() + 1));
+ 
+@@ -81,7 +84,9 @@ namespace wykobi
+                                              InputIterator end,
+                                              const point2d<T>& q)
+          {
+-            std::random_shuffle(begin,end);
++            std::random_device random_device;
++            std::mt19937 random_engine(random_device());
++            std::shuffle(begin,end,random_engine);
+ 
+             circle<T> circle = make_circle(q,*begin);
+ 
+@@ -102,7 +107,9 @@ namespace wykobi
+                                               const point2d<T>& q1,
+                                               const point2d<T>& q2)
+          {
+-            std::random_shuffle(begin,end);
++            std::random_device random_device;
++            std::mt19937 random_engine(random_device());
++            std::shuffle(begin,end,random_engine);
+ 
+             circle<T> circle = make_circle(q1,q2);
+ 
