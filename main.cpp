@@ -23,10 +23,16 @@ template<typename T>
 struct convex_hull_quick_hull<point2d<T>>
 {
 public:
+  struct debug_data_t
+  {
+    segment2d first_horizontal_split;
+    std::vector<triangle2d> split_triangles;
+  };
   template<typename InputIterator, typename OutputIterator>
   convex_hull_quick_hull(InputIterator begin,
                          InputIterator end,
-                         OutputIterator out)
+                         OutputIterator out,
+                         debug_data_t& debug)
   {
     // If the input is a point, line segment or triangle, then there is no work
     // to do. They will always form a convex set.
@@ -42,6 +48,7 @@ public:
       begin, end, [](const point2d<T>& a, const point2d<T>& b) -> bool {
         return a.x < b.x;
       });
+    debug.first_horizontal_split = make_segment(*leftmost, *rightmost);
     auto leftmost_it = point_list.insert(
       point_list.end(), make_point<T>(leftmost->x, leftmost->y));
     auto rightmost_it = point_list.insert(
@@ -81,7 +88,8 @@ public:
               leftmost,
               rightmost,
               point_list,
-              std::next(leftmost_it));
+              std::next(leftmost_it),
+              debug);
     // insert with std::next(leftmost_it) which is point_list.end so that it is
     // inserted after rightmost, which in a loop is before leftmost
     find_hull(s2.cbegin(),
@@ -89,7 +97,8 @@ public:
               rightmost,
               leftmost,
               point_list,
-              std::next(rightmost_it));
+              std::next(rightmost_it),
+              debug);
 
     for (const auto& point : point_list) {
       (*out++) = make_point<T>(point.x, point.y);
@@ -135,7 +144,8 @@ private:
                  InputIterator segment_0,
                  InputIterator segment_1,
                  std::list<point2d<T>> point_list,
-                 OutputIterator segment_it)
+                 OutputIterator segment_it,
+                 debug_data_t& debug)
   {
     // Sk has no points
     if (begin == end) {
@@ -177,14 +187,22 @@ private:
         s2.push_back(wykobi::make_point(it->x, it->y));
       }
     }
-    find_hull(
-      s1.cbegin(), s1.cend(), segment_0, farthest, point_list, segment_it);
+    debug.split_triangles.push_back(
+      make_triangle(*segment_0, *farthest, *segment_1));
+    find_hull(s1.cbegin(),
+              s1.cend(),
+              segment_0,
+              farthest,
+              point_list,
+              farthest_it,
+              debug);
     find_hull(s2.cbegin(),
               s2.cend(),
               farthest,
               segment_1,
               point_list,
-              std::next(farthest_it));
+              std::next(farthest_it),
+              debug);
   }
 };
 } // namespace algorithm
@@ -216,8 +234,14 @@ public:
                         InputIterator end,
                         OutputIterator out)
   {
+    debug.first_horizontal_split[0].x = 0;
+    debug.first_horizontal_split[1].x = 0;
+    debug.first_horizontal_split[0].y = 0;
+    debug.first_horizontal_split[1].y = 0;
+    debug.split_triangles.clear();
     convex_hull.clear();
-    algorithm::convex_hull_quick_hull<wykobi::point2d<T>>(begin, end, out);
+    algorithm::convex_hull_quick_hull<wykobi::point2d<T>>(
+      begin, end, out, debug);
   }
 
   template<typename InputIterator, typename OutputIterator>
@@ -230,15 +254,28 @@ public:
       begin, end, out);
   }
 
+  uint32_t num_points_to_generate = 10;
+
 private:
   std::vector<wykobi::point2d<T>> point_list;
   wykobi::polygon<T, 2> convex_hull;
+
+  typename algorithm::convex_hull_quick_hull<wykobi::point2d<T>>::debug_data_t
+    debug;
 
   friend class Renderer;
 };
 
 class Renderer
 {
+  struct options_t
+  {
+    bool show_first_horizontal_split = true;
+    bool show_first_convex_hull_vertex = true;
+    bool show_last_convex_hull_edge = true;
+    int show_split_triangle = -1;
+  };
+
 public:
   Renderer()
     : window(nullptr)
@@ -254,7 +291,7 @@ public:
     }
 
     window = SDL_CreateWindow(
-      "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 640, 480, 0);
+      "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 800, 600, 0);
     if (!window) {
       terminate();
       return false;
@@ -307,11 +344,38 @@ public:
   }
 
   template<class T>
-  void draw(const Solver<T>& solver)
+  void draw(Solver<T>& solver)
   {
     ImGui_ImplSDL2_NewFrame(window);
     ImGui::NewFrame();
-    ImGui::ShowDemoWindow();
+
+    ImGui::Begin("Controls");
+    ImGui::Text("Keyboard controls:\n\tSpacebar: Regenerate Set.\n\tBackspace: "
+                "Clear all points.\n"
+                "Mouse: Click to add points to set.");
+    ImGui::Checkbox("Show first horizontal split",
+                    &debug_options.show_first_horizontal_split);
+    ImGui::Checkbox("Show first convex hull vertex",
+                    &debug_options.show_first_convex_hull_vertex);
+    ImGui::Checkbox("Show last convex hull edge",
+                    &debug_options.show_last_convex_hull_edge);
+    ImGui::SliderInt("Show split triangle",
+                     &debug_options.show_split_triangle,
+                     -1,
+                     solver.debug.split_triangles.size() - 1);
+
+    ImGui::InputScalar("Amount of points to generate",
+                       ImGuiDataType_U32,
+                       &solver.num_points_to_generate);
+    if (ImGui::Button("Generate Random point set")) {
+      solver.generate_points(width * 0.25f,
+                             height * 0.25f,
+                             width * 0.5f,
+                             height * 0.5f,
+                             solver.num_points_to_generate);
+      solver.solve();
+    }
+    ImGui::End();
 
     const SDL_Rect clip = { 0, 0, static_cast<int>(width), static_cast<int>(height) };
     SDL_RenderSetClipRect(renderer, &clip);
@@ -319,9 +383,10 @@ public:
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 127, 127, 127, SDL_ALPHA_OPAQUE);
     draw(solver.point_list);
     draw(solver.convex_hull);
+    draw(solver.debug);
 
     ImGui::Render();
     ImGuiSDL::Render(ImGui::GetDrawData());
@@ -342,7 +407,9 @@ public:
                          polygon[i + 1].x,
                          height - polygon[i + 1].y);
     }
-    SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
+    if (debug_options.show_last_convex_hull_edge) {
+      SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
+    }
     if (polygon.size() > 1) {
       SDL_RenderDrawLine(renderer,
                          polygon[polygon.size() - 1].x,
@@ -353,16 +420,18 @@ public:
       SDL_RenderDrawPoint(renderer, polygon[0].x, height - polygon[0].y);
     }
 
-    constexpr int width = 10;
-    if (polygon.size() >= 1) {
-      SDL_SetRenderDrawColor(renderer, 255, 255, 0, SDL_ALPHA_OPAQUE);
-      SDL_Rect rect{
-        static_cast<int>(polygon[0].x - width / 2),
-        static_cast<int>(height - polygon[0].y - width / 2),
-        width,
-        width,
-      };
-      SDL_RenderDrawRect(renderer, &rect);
+    if (debug_options.show_first_convex_hull_vertex) {
+      constexpr int width = 10;
+      if (polygon.size() >= 1) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, SDL_ALPHA_OPAQUE);
+        SDL_Rect rect{
+          static_cast<int>(polygon[0].x - width / 2),
+          static_cast<int>(height - polygon[0].y - width / 2),
+          width,
+          width,
+        };
+        SDL_RenderDrawRect(renderer, &rect);
+      }
     }
   }
 
@@ -371,6 +440,45 @@ public:
   {
     for (const auto& point : point_list) {
       SDL_RenderDrawPoint(renderer, point.x, height - point.y);
+    }
+  }
+
+  void draw(const algorithm::convex_hull_quick_hull<
+            wykobi::point2d<double>>::debug_data_t& debug)
+  {
+    if (debug_options.show_first_horizontal_split) {
+      SDL_SetRenderDrawColor(renderer, 0, 0, 255, SDL_ALPHA_OPAQUE);
+      SDL_RenderDrawLine(renderer,
+                         debug.first_horizontal_split[0].x,
+                         height - debug.first_horizontal_split[0].y,
+                         debug.first_horizontal_split[1].x,
+                         height - debug.first_horizontal_split[1].y);
+    }
+    if (debug_options.show_split_triangle >= debug.split_triangles.size()) {
+      debug_options.show_split_triangle = -1;
+    }
+    if (debug_options.show_split_triangle >= 0) {
+      SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+      auto& t = debug.split_triangles[debug_options.show_split_triangle];
+
+      std::string point_names[3] = { "P", "C", "Q" };
+      for (uint8_t i = 0; i < 3; ++i) {
+        ImGui::SetNextWindowPos(ImVec2(t[i].x, height - t[i].y));
+        ImGui::Begin(point_names[i].c_str(),
+                     nullptr,
+                     ImGuiWindowFlags_NoBackground |
+                       ImGuiWindowFlags_NoDecoration |
+                       ImGuiWindowFlags_NoInputs);
+        ImGui::Text("%s", point_names[i].c_str());
+        ImGui::End();
+      }
+
+      SDL_RenderDrawLine(
+        renderer, t[0].x, height - t[0].y, t[1].x, height - t[1].y);
+      SDL_RenderDrawLine(
+        renderer, t[1].x, height - t[1].y, t[2].x, height - t[2].y);
+      SDL_RenderDrawLine(
+        renderer, t[2].x, height - t[2].y, t[0].x, height - t[0].y);
     }
   }
 
@@ -438,7 +546,7 @@ public:
                                    height * 0.25f,
                                    width * 0.5f,
                                    height * 0.5f,
-                                   num_points);
+                                   solver.num_points_to_generate);
             solver.solve();
             break;
           case SDL_SCANCODE_BACKSPACE:
@@ -461,8 +569,11 @@ public:
 
     uint32_t width, height;
     renderer.resolution(width, height);
-    solver.generate_points(
-      width * 0.25f, height * 0.25f, width * 0.5f, height * 0.5f, num_points);
+    solver.generate_points(width * 0.25f,
+                           height * 0.25f,
+                           width * 0.5f,
+                           height * 0.5f,
+                           solver.num_points_to_generate);
     solver.solve();
 
 #if __EMSCRIPTEN__
@@ -480,7 +591,6 @@ public:
   void terminate() { renderer.terminate(); }
 
 private:
-  static constexpr std::size_t num_points = 10;
   Renderer renderer;
   Solver<double> solver;
 };
