@@ -2,9 +2,11 @@
 
 #include <wykobi.hpp>
 #include <wykobi_algorithm.hpp>
-
 #include <SDL.h>
 #include <SDL_render.h>
+#include <imgui.h>
+#include <imgui_sdl.h>
+#include <imgui_impl_sdl.h>
 
 #if __EMSCRIPTEN__
 #include <emscripten.h>
@@ -241,12 +243,13 @@ public:
   Renderer()
     : window(nullptr)
     , renderer(nullptr)
+    , ui(nullptr)
   {}
   ~Renderer() { terminate(); }
 
   bool initialize()
   {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
       return false;
     }
 
@@ -257,7 +260,7 @@ public:
       return false;
     }
 
-    renderer = SDL_CreateRenderer(window, 0, 0);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
       terminate();
       return false;
@@ -268,11 +271,30 @@ public:
     width = w;
     height = h;
 
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ui = ImGui::CreateContext();
+    if (!ui) {
+      terminate();
+      return false;
+    }
+
+    // Setup Platform/Renderer bindings
+    ImGuiSDL::Initialize(renderer, width, height);
+    ImGui_ImplSDL2_InitForOpenGL(window, nullptr);
+
     return true;
   }
 
   void terminate() noexcept
   {
+    if (ui) {
+      ImGuiSDL::Deinitialize();
+      ImGui_ImplSDL2_Shutdown();
+      ImGui::DestroyContext(ui);
+      ui = nullptr;
+    }
+
     if (renderer) {
       SDL_DestroyRenderer(renderer);
       renderer = nullptr;
@@ -287,12 +309,22 @@ public:
   template<class T>
   void draw(const Solver<T>& solver)
   {
+    ImGui_ImplSDL2_NewFrame(window);
+    ImGui::NewFrame();
+    ImGui::ShowDemoWindow();
+
+    const SDL_Rect clip = { 0, 0, static_cast<int>(width), static_cast<int>(height) };
+    SDL_RenderSetClipRect(renderer, &clip);
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
     draw(solver.point_list);
     draw(solver.convex_hull);
+
+    ImGui::Render();
+    ImGuiSDL::Render(ImGui::GetDrawData());
 
     SDL_RenderPresent(renderer);
   }
@@ -348,9 +380,24 @@ public:
     out_height = height;
   }
 
+  bool ui_want_capture_mouse() const
+  {
+    ImGuiIO& io = ImGui::GetIO();
+    return io.WantCaptureMouse;
+  }
+
+  bool ui_want_capture_keyboard() const
+  {
+    ImGuiIO& io = ImGui::GetIO();
+    return io.WantCaptureKeyboard;
+  }
+
+
 private:
   SDL_Window* window;
   SDL_Renderer* renderer;
+  ImGuiContext* ui;
+  options_t debug_options;
   uint32_t width;
   uint32_t height;
 };
@@ -372,14 +419,15 @@ public:
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+      ImGui_ImplSDL2_ProcessEvent(&event);
       uint32_t width, height;
       renderer.resolution(width, height);
       if (event.type == SDL_QUIT) {
         return false;
-      } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+      } else if (event.type == SDL_MOUSEBUTTONDOWN && !renderer.ui_want_capture_mouse()) {
         solver.add_point(event.button.x, height - event.button.y);
         solver.solve();
-      } else if (event.type == SDL_KEYDOWN) {
+      } else if (event.type == SDL_KEYDOWN && !renderer.ui_want_capture_keyboard()) {
 #if __EMSCRIPTEN__
         switch (event.key.keysym.sym) { // Weird emscripten bug
 #else

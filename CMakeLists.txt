@@ -4,9 +4,10 @@ project(quickhull)
 set(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory(third_party/wykobi-0.0.5)
+add_subdirectory(third_party/imgui-1.74)
 
 add_executable(quickhull main.cpp)
-target_link_libraries(quickhull PRIVATE wykobi)
+target_link_libraries(quickhull PRIVATE wykobi imgui)
 
 if (EMSCRIPTEN)
   set_target_properties(quickhull PROPERTIES
