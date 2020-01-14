@@ -12,6 +12,7 @@ target_link_libraries(quickhull PRIVATE wykobi imgui)
 if (EMSCRIPTEN)
   set_target_properties(quickhull PROPERTIES
     COMPILE_FLAGS_DEBUG "-g4"
+    COMPILE_FLAGS "-s USE_SDL=2 --emrun"
     LINK_FLAGS_DEBUG "-g4"
     LINK_FLAGS "-s USE_SDL=2 --emrun"
     SUFFIX ".html"

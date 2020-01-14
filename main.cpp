@@ -71,12 +71,9 @@ public:
         case RightHandSide:
           s1.push_back(wykobi::make_point(it->x, it->y));
           break;
+        case CollinearOrientation:
         case LeftHandSide:
           s2.push_back(wykobi::make_point(it->x, it->y));
-          break;
-        case CollinearOrientation:
-          // TODO: Add to one of the two sets or ignore?
-          assert(false);
           break;
       }
     }
@@ -164,7 +161,9 @@ private:
         }
       }
     }
-    assert(farthest != end);
+    if (farthest == end) {
+      return;
+    }
 
     // Add point C to convex hull at the location between P and Q
     auto farthest_it =
@@ -286,19 +285,22 @@ public:
 
   bool initialize()
   {
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+      std::printf("Failed to initialize SDL\n");
       return false;
     }
 
     window = SDL_CreateWindow(
       "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 800, 600, 0);
     if (!window) {
+      std::printf("Failed to create SDL window\n");
       terminate();
       return false;
     }
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
+      std::printf("Failed to create SDL renderer\n");
       terminate();
       return false;
     }
@@ -312,6 +314,7 @@ public:
     IMGUI_CHECKVERSION();
     ui = ImGui::CreateContext();
     if (!ui) {
+      std::printf("Failed to create ImGui context\n");
       terminate();
       return false;
     }
@@ -536,11 +539,7 @@ public:
         solver.add_point(event.button.x, height - event.button.y);
         solver.solve();
       } else if (event.type == SDL_KEYDOWN && !renderer.ui_want_capture_keyboard()) {
-#if __EMSCRIPTEN__
-        switch (event.key.keysym.sym) { // Weird emscripten bug
-#else
         switch (event.key.keysym.scancode) {
-#endif
           case SDL_SCANCODE_SPACE:
             solver.generate_points(width * 0.25f,
                                    height * 0.25f,
