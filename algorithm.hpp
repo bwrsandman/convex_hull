@@ -7,13 +7,13 @@ namespace algorithm {
 using namespace wykobi;
 
 template<typename T>
-struct convex_hull_quick_hull;
+struct convex_hull_quickhull;
 
-template <typename T> struct convex_hull_quick_hull;
-template <typename T> struct convex_hull_quick_hull< point2d<T> >;
+template <typename T> struct convex_hull_quickhull;
+template <typename T> struct convex_hull_quickhull<point2d<T> >;
 
 } // namespace algorithm
 
-#include "quick_hull.inl"
+#include "quickhull.inl"
 
 #endif // ALGORITHM_H_

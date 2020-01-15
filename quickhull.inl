@@ -6,7 +6,7 @@ using namespace wykobi;
 using namespace wykobi::algorithm;
 
 template<typename T>
-struct convex_hull_quick_hull<point2d<T>>
+struct convex_hull_quickhull<point2d<T>>
 {
 public:
 struct debug_data_t
@@ -15,10 +15,10 @@ struct debug_data_t
   std::vector<triangle2d> split_triangles;
 };
 template<typename InputIterator, typename OutputIterator>
-convex_hull_quick_hull(InputIterator begin,
-                       InputIterator end,
-                       OutputIterator out,
-                       debug_data_t& debug)
+convex_hull_quickhull(InputIterator begin,
+                      InputIterator end,
+                      OutputIterator out,
+                      debug_data_t& debug)
 {
   // If the input is a point, line segment or triangle, then there is no work
   // to do. They will always form a convex set.

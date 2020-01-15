@@ -1,4 +1,6 @@
+#include <array>
 #include <list>
+#include <string_view>
 
 #include <SDL.h>
 #include <SDL_render.h>
@@ -12,11 +14,30 @@
 
 #include "algorithm.hpp"
 
+enum class Algorithm {
+  // Reference
+  GrahamScan,
+  JarvisMarch,
+  Melkman,
+
+  // Ours
+  QuickHull,
+
+  _Count,
+};
+
+static constexpr std::array<std::string_view, static_cast<size_t>(Algorithm::_Count)> algorithm_strings = {
+    "Graham Scan (Reference)",
+    "Jarvis March (Reference)",
+    "Melkman (Reference)",
+    "Quickhull",
+};
+
 template<class T>
 class Solver
 {
 public:
-  Solver() = default;
+  Solver() : selected_algorithm(Algorithm::QuickHull) {}
   ~Solver() = default;
 
   void add_point(T x, T y) { point_list.push_back(wykobi::make_point(x, y)); }
@@ -30,22 +51,38 @@ public:
   }
   void solve()
   {
-    solve_quick_hull(
-      point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
-  }
-
-  template<typename InputIterator, typename OutputIterator>
-  void solve_quick_hull(InputIterator begin,
-                        InputIterator end,
-                        OutputIterator out)
-  {
     debug.first_horizontal_split[0].x = 0;
     debug.first_horizontal_split[1].x = 0;
     debug.first_horizontal_split[0].y = 0;
     debug.first_horizontal_split[1].y = 0;
     debug.split_triangles.clear();
     convex_hull.clear();
-    algorithm::convex_hull_quick_hull<wykobi::point2d<T>>(
+    switch (selected_algorithm) {
+      case Algorithm::GrahamScan:
+        solve_graham_scan(
+            point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
+        break;
+      case Algorithm::JarvisMarch:
+        solve_jarvis_march(
+            point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
+        break;
+      case Algorithm::Melkman:
+        solve_melkman(
+            point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
+        break;
+      case Algorithm::QuickHull:
+        solve_quickhull(
+            point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
+        break;
+    }
+  }
+
+  template<typename InputIterator, typename OutputIterator>
+  void solve_quickhull(InputIterator begin,
+                       InputIterator end,
+                       OutputIterator out)
+  {
+    algorithm::convex_hull_quickhull<wykobi::point2d<T>>(
       begin, end, out, debug);
   }
 
@@ -54,9 +91,25 @@ public:
                          InputIterator end,
                          OutputIterator out)
   {
-    convex_hull.clear();
     wykobi::algorithm::convex_hull_graham_scan<wykobi::point2d<T>>(
       begin, end, out);
+  }
+
+  template<typename InputIterator, typename OutputIterator>
+  void solve_jarvis_march(InputIterator begin,
+                          InputIterator end,
+                          OutputIterator out)
+  {
+    wykobi::algorithm::convex_hull_jarvis_march<wykobi::point2d<T>>(
+      begin, end, out);
+  }
+
+  template<typename InputIterator, typename OutputIterator>
+  void solve_melkman(InputIterator begin,
+                     InputIterator end,
+                     OutputIterator out)
+  {
+    wykobi::algorithm::convex_hull_melkman<wykobi::point2d<T>>(begin, end, out);
   }
 
   uint32_t num_points_to_generate = 10;
@@ -65,7 +118,9 @@ private:
   std::vector<wykobi::point2d<T>> point_list;
   wykobi::polygon<T, 2> convex_hull;
 
-  typename algorithm::convex_hull_quick_hull<wykobi::point2d<T>>::debug_data_t
+  Algorithm selected_algorithm;
+
+  typename algorithm::convex_hull_quickhull<wykobi::point2d<T>>::debug_data_t
     debug;
 
   friend class Renderer;
@@ -162,16 +217,22 @@ public:
     ImGui::Text("Keyboard controls:\n\tSpacebar: Regenerate Set.\n\tBackspace: "
                 "Clear all points.\n"
                 "Mouse: Click to add points to set.");
-    ImGui::Checkbox("Show first horizontal split",
-                    &debug_options.show_first_horizontal_split);
-    ImGui::Checkbox("Show first convex hull vertex",
-                    &debug_options.show_first_convex_hull_vertex);
-    ImGui::Checkbox("Show last convex hull edge",
-                    &debug_options.show_last_convex_hull_edge);
-    ImGui::SliderInt("Show split triangle",
-                     &debug_options.show_split_triangle,
-                     -1,
-                     solver.debug.split_triangles.size() - 1);
+
+    auto item_current = algorithm_strings[static_cast<size_t>(solver.selected_algorithm)];
+    if (ImGui::BeginCombo("Algorithm", item_current.data()))
+    {
+      for (int n = 0; n < algorithm_strings.size(); n++)
+      {
+        bool is_selected = (item_current == algorithm_strings[n]);
+        if (ImGui::Selectable(algorithm_strings[n].data(), is_selected)) {
+          solver.selected_algorithm = static_cast<Algorithm>(n);
+          solver.solve();
+        }
+        if (is_selected)
+          ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
 
     ImGui::InputScalar("Amount of points to generate",
                        ImGuiDataType_U32,
@@ -183,6 +244,23 @@ public:
                              height * 0.5f,
                              solver.num_points_to_generate);
       solver.solve();
+    }
+    if (ImGui::Button("Clear point set")) {
+      solver.generate_points(0, 0, 0, 0, 0);
+      solver.solve();
+    }
+
+    if (solver.selected_algorithm == Algorithm::QuickHull) {
+      ImGui::Checkbox("Show first horizontal split",
+                      &debug_options.show_first_horizontal_split);
+      ImGui::Checkbox("Show first convex hull vertex",
+                      &debug_options.show_first_convex_hull_vertex);
+      ImGui::Checkbox("Show last convex hull edge",
+                      &debug_options.show_last_convex_hull_edge);
+      ImGui::SliderInt("Show split triangle",
+                       &debug_options.show_split_triangle,
+                       -1,
+                       solver.debug.split_triangles.size() - 1);
     }
     ImGui::End();
 
@@ -252,7 +330,7 @@ public:
     }
   }
 
-  void draw(const algorithm::convex_hull_quick_hull<
+  void draw(const algorithm::convex_hull_quickhull<
             wykobi::point2d<double>>::debug_data_t& debug)
   {
     if (debug_options.show_first_horizontal_split) {
