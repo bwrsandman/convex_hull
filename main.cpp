@@ -14,7 +14,8 @@
 
 #include "algorithm.hpp"
 
-enum class Algorithm {
+enum class Algorithm
+{
   // Reference
   GrahamScan,
   JarvisMarch,
@@ -22,22 +23,26 @@ enum class Algorithm {
 
   // Ours
   QuickHull,
+  ChansAlgorithm,
 
   _Count,
 };
 
-static constexpr std::array<std::string_view, static_cast<size_t>(Algorithm::_Count)> algorithm_strings = {
-    "Graham Scan (Reference)",
-    "Jarvis March (Reference)",
-    "Melkman (Reference)",
-    "Quickhull",
-};
+static constexpr std::array<std::string_view,
+                            static_cast<size_t>(Algorithm::_Count)>
+  algorithm_strings = {
+    "Graham Scan (Reference)", "Jarvis March (Reference)",
+    "Melkman (Reference)",     "Quickhull",
+    "ChansAlgorithm",
+  };
 
 template<class T>
 class Solver
 {
 public:
-  Solver() : selected_algorithm(Algorithm::QuickHull) {}
+  Solver()
+    : selected_algorithm(Algorithm::ChansAlgorithm)
+  {}
   ~Solver() = default;
 
   void add_point(T x, T y) { point_list.push_back(wykobi::make_point(x, y)); }
@@ -51,11 +56,18 @@ public:
   }
   void solve()
   {
-    debug.first_horizontal_split[0].x = 0;
-    debug.first_horizontal_split[1].x = 0;
-    debug.first_horizontal_split[0].y = 0;
-    debug.first_horizontal_split[1].y = 0;
-    debug.split_triangles.clear();
+    debug_quickhull.first_horizontal_split[0].x = 0;
+    debug_quickhull.first_horizontal_split[1].x = 0;
+    debug_quickhull.first_horizontal_split[0].y = 0;
+    debug_quickhull.first_horizontal_split[1].y = 0;
+    debug_quickhull.split_triangles.clear();
+    debug_chans_algorithm.first_point.x = 0;
+    debug_chans_algorithm.first_point.y = 0;
+    debug_chans_algorithm.intermediate_subsets.clear();
+    debug_chans_algorithm.intermediate_m.clear();
+    debug_chans_algorithm.intermediate_hulls.clear();
+    debug_chans_algorithm.intermediate_found_hull_points.clear();
+    debug_chans_algorithm.intermediate_found_points.clear();
     convex_hull.clear();
     switch (selected_algorithm) {
       case Algorithm::GrahamScan:
@@ -74,6 +86,11 @@ public:
         solve_quickhull(
             point_list.cbegin(), point_list.cend(), std::back_inserter(convex_hull));
         break;
+      case Algorithm::ChansAlgorithm:
+        solve_chans_algorithm(point_list.cbegin(),
+                              point_list.cend(),
+                              std::back_inserter(convex_hull));
+        break;
     }
   }
 
@@ -83,7 +100,16 @@ public:
                        OutputIterator out)
   {
     algorithm::convex_hull_quickhull<wykobi::point2d<T>>(
-      begin, end, out, debug);
+      begin, end, out, debug_quickhull);
+  }
+
+  template<typename InputIterator, typename OutputIterator>
+  void solve_chans_algorithm(InputIterator begin,
+                             InputIterator end,
+                             OutputIterator out)
+  {
+    algorithm::convex_hull_chans_algorithm<wykobi::point2d<T>>(
+      begin, end, out, debug_chans_algorithm);
   }
 
   template<typename InputIterator, typename OutputIterator>
@@ -121,7 +147,9 @@ private:
   Algorithm selected_algorithm;
 
   typename algorithm::convex_hull_quickhull<wykobi::point2d<T>>::debug_data_t
-    debug;
+    debug_quickhull;
+  typename algorithm::convex_hull_chans_algorithm<
+    wykobi::point2d<T>>::debug_data_t debug_chans_algorithm;
 
   friend class Renderer;
 };
@@ -130,10 +158,20 @@ class Renderer
 {
   struct options_t
   {
-    bool show_first_horizontal_split = true;
     bool show_first_convex_hull_vertex = true;
     bool show_last_convex_hull_edge = true;
-    int show_split_triangle = -1;
+    struct
+    {
+      bool show_first_horizontal_split = true;
+      int show_split_triangle = -1;
+    } quickhull;
+    struct
+    {
+      bool show_first_point = true;
+      int show_intermediate_iteration = -1;
+      int show_intermediate_subset = -1;
+      int show_intermediate_jarvis_found_points_iteration = -1;
+    } chans_algorithm;
   };
 
 public:
@@ -152,7 +190,7 @@ public:
     }
 
     window = SDL_CreateWindow(
-      "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 800, 600, 0);
+      "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 1280, 768, 0);
     if (!window) {
       std::printf("Failed to create SDL window\n");
       terminate();
@@ -250,17 +288,62 @@ public:
       solver.solve();
     }
 
+    ImGui::Checkbox("Show first convex hull vertex",
+                    &debug_options.show_first_convex_hull_vertex);
+    ImGui::Checkbox("Show last convex hull edge",
+                    &debug_options.show_last_convex_hull_edge);
+
     if (solver.selected_algorithm == Algorithm::QuickHull) {
       ImGui::Checkbox("Show first horizontal split",
-                      &debug_options.show_first_horizontal_split);
-      ImGui::Checkbox("Show first convex hull vertex",
-                      &debug_options.show_first_convex_hull_vertex);
-      ImGui::Checkbox("Show last convex hull edge",
-                      &debug_options.show_last_convex_hull_edge);
+                      &debug_options.quickhull.show_first_horizontal_split);
       ImGui::SliderInt("Show split triangle",
-                       &debug_options.show_split_triangle,
+                       &debug_options.quickhull.show_split_triangle,
                        -1,
-                       solver.debug.split_triangles.size() - 1);
+                       solver.debug_quickhull.split_triangles.size() - 1);
+    } else if (solver.selected_algorithm == Algorithm::ChansAlgorithm) {
+      ImGui::Checkbox("Show first selected convex hull vertex",
+                      &debug_options.chans_algorithm.show_first_point);
+      ImGui::SliderInt(
+        "Show iteration details",
+        &debug_options.chans_algorithm.show_intermediate_iteration,
+        -1,
+        solver.debug_chans_algorithm.intermediate_subsets.size() - 1);
+      if (debug_options.chans_algorithm.show_intermediate_iteration >= 0 &&
+          debug_options.chans_algorithm.show_intermediate_iteration <
+            solver.debug_chans_algorithm.intermediate_subsets.size()) {
+        ImGui::Text("expected output size = %u",
+                    solver.debug_chans_algorithm
+                      .intermediate_m[debug_options.chans_algorithm
+                                        .show_intermediate_iteration]);
+        ImGui::SliderInt(
+          "Show intermediate subset",
+          &debug_options.chans_algorithm.show_intermediate_subset,
+          -1,
+          solver.debug_chans_algorithm
+              .intermediate_subsets[debug_options.chans_algorithm
+                                      .show_intermediate_iteration]
+              .size() -
+            1);
+        if (debug_options.chans_algorithm.show_intermediate_subset >= 0) {
+          ImGui::Text(
+            "size = %zu",
+            solver.debug_chans_algorithm
+              .intermediate_subsets
+                [debug_options.chans_algorithm.show_intermediate_iteration]
+                [debug_options.chans_algorithm.show_intermediate_subset]
+              .size());
+        }
+        ImGui::SliderInt(
+          "Show jarvis found found points iteration",
+          &debug_options.chans_algorithm
+             .show_intermediate_jarvis_found_points_iteration,
+          -1,
+          solver.debug_chans_algorithm
+              .intermediate_found_hull_points[debug_options.chans_algorithm
+                                                .show_intermediate_iteration]
+              .size() -
+            1);
+      }
     }
     ImGui::End();
 
@@ -270,10 +353,15 @@ public:
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
-    SDL_SetRenderDrawColor(renderer, 127, 127, 127, SDL_ALPHA_OPAQUE);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
     draw(solver.point_list);
+    SDL_SetRenderDrawColor(renderer, 127, 127, 127, SDL_ALPHA_OPAQUE);
     draw(solver.convex_hull);
-    draw(solver.debug);
+    if (solver.selected_algorithm == Algorithm::QuickHull) {
+      draw(solver.debug_quickhull);
+    } else if (solver.selected_algorithm == Algorithm::ChansAlgorithm) {
+      draw(solver.debug_chans_algorithm);
+    }
 
     ImGui::Render();
     ImGuiSDL::Render(ImGui::GetDrawData());
@@ -333,7 +421,7 @@ public:
   void draw(const algorithm::convex_hull_quickhull<
             wykobi::point2d<double>>::debug_data_t& debug)
   {
-    if (debug_options.show_first_horizontal_split) {
+    if (debug_options.quickhull.show_first_horizontal_split) {
       SDL_SetRenderDrawColor(renderer, 0, 0, 255, SDL_ALPHA_OPAQUE);
       SDL_RenderDrawLine(renderer,
                          debug.first_horizontal_split[0].x,
@@ -341,12 +429,14 @@ public:
                          debug.first_horizontal_split[1].x,
                          height - debug.first_horizontal_split[1].y);
     }
-    if (debug_options.show_split_triangle >= debug.split_triangles.size()) {
-      debug_options.show_split_triangle = -1;
+    if (debug_options.quickhull.show_split_triangle >=
+        debug.split_triangles.size()) {
+      debug_options.quickhull.show_split_triangle = -1;
     }
-    if (debug_options.show_split_triangle >= 0) {
+    if (debug_options.quickhull.show_split_triangle >= 0) {
       SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-      auto& t = debug.split_triangles[debug_options.show_split_triangle];
+      auto& t =
+        debug.split_triangles[debug_options.quickhull.show_split_triangle];
 
       std::string point_names[3] = { "P", "C", "Q" };
       for (uint8_t i = 0; i < 3; ++i) {
@@ -366,6 +456,88 @@ public:
         renderer, t[1].x, height - t[1].y, t[2].x, height - t[2].y);
       SDL_RenderDrawLine(
         renderer, t[2].x, height - t[2].y, t[0].x, height - t[0].y);
+    }
+  }
+
+  void draw(const algorithm::convex_hull_chans_algorithm<
+            wykobi::point2d<double>>::debug_data_t& debug)
+  {
+    constexpr int highlight_box_width = 10;
+    if (debug_options.chans_algorithm.show_first_point) {
+      SDL_SetRenderDrawColor(renderer, 0, 255, 0, SDL_ALPHA_OPAQUE);
+      SDL_Rect rect{
+        static_cast<int>(debug.first_point.x - highlight_box_width / 2),
+        static_cast<int>(height - debug.first_point.y -
+                         highlight_box_width / 2),
+        highlight_box_width,
+        highlight_box_width,
+      };
+      SDL_RenderDrawRect(renderer, &rect);
+    }
+    if (debug_options.chans_algorithm.show_intermediate_iteration >=
+        debug.intermediate_subsets.size()) {
+      debug_options.chans_algorithm.show_intermediate_iteration = -1;
+    }
+    if (debug_options.chans_algorithm.show_intermediate_iteration >= 0) {
+      auto& subsets =
+        debug.intermediate_subsets[debug_options.chans_algorithm
+                                     .show_intermediate_iteration];
+      auto& hulls = debug.intermediate_hulls[debug_options.chans_algorithm
+                                               .show_intermediate_iteration];
+      auto& found_point_iterations =
+        debug.intermediate_found_hull_points[debug_options.chans_algorithm
+                                               .show_intermediate_iteration];
+      auto& best_found_point_iterations =
+        debug.intermediate_found_points[debug_options.chans_algorithm
+                                          .show_intermediate_iteration];
+      if (debug_options.chans_algorithm.show_intermediate_subset >=
+          subsets.size()) {
+        debug_options.chans_algorithm.show_intermediate_subset = -1;
+      }
+      if (debug_options.chans_algorithm.show_intermediate_subset >= 0) {
+        auto& subset =
+          subsets[debug_options.chans_algorithm.show_intermediate_subset];
+        auto& hull =
+          hulls[debug_options.chans_algorithm.show_intermediate_subset];
+        for (auto& p : subset) {
+          SDL_SetRenderDrawColor(renderer, 0, 255, 255, SDL_ALPHA_OPAQUE);
+          SDL_Rect rect{
+            static_cast<int>(p.x - highlight_box_width / 2),
+            static_cast<int>(height - p.y - highlight_box_width / 2),
+            highlight_box_width,
+            highlight_box_width,
+          };
+          SDL_RenderDrawRect(renderer, &rect);
+        }
+        draw(hull);
+      }
+      if (debug_options.chans_algorithm
+            .show_intermediate_jarvis_found_points_iteration >= 0) {
+        auto& points = found_point_iterations
+          [debug_options.chans_algorithm
+             .show_intermediate_jarvis_found_points_iteration];
+        auto& best_point = best_found_point_iterations
+          [debug_options.chans_algorithm
+             .show_intermediate_jarvis_found_points_iteration];
+        for (auto& p : points) {
+          SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
+          SDL_Rect rect{
+            static_cast<int>(p.x - highlight_box_width / 2),
+            static_cast<int>(height - p.y - highlight_box_width / 2),
+            highlight_box_width,
+            highlight_box_width,
+          };
+          SDL_RenderDrawRect(renderer, &rect);
+        }
+        SDL_SetRenderDrawColor(renderer, 255, 127, 127, SDL_ALPHA_OPAQUE);
+        SDL_Rect rect{
+          static_cast<int>(best_point.x - highlight_box_width / 2),
+          static_cast<int>(height - best_point.y - highlight_box_width / 2),
+          highlight_box_width,
+          highlight_box_width,
+        };
+        SDL_RenderDrawRect(renderer, &rect);
+      }
     }
   }
 
