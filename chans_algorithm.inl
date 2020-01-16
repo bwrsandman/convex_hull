@@ -108,6 +108,7 @@ struct convex_hull_chans_algorithm<point2d<T>> {
         p_i = p_i_p_1;
       }
     }
+    std::printf("[Chan's algorithm] Degeneracy detected: Could not find hull in %f iterations\n", iterations);
   }
 
  private:
