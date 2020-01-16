@@ -1,3 +1,5 @@
+#include <list>
+
 #include <wykobi.hpp>
 #include <wykobi_algorithm.hpp>
 
@@ -54,11 +56,11 @@ convex_hull_quickhull(InputIterator begin,
       continue;
     }
     switch (orientation(*leftmost, *rightmost, *it)) {
-      case RightHandSide:
+      case LeftHandSide:
         s1.push_back(wykobi::make_point(it->x, it->y));
         break;
       case CollinearOrientation:
-      case LeftHandSide:
+      case RightHandSide:
         s2.push_back(wykobi::make_point(it->x, it->y));
         break;
     }
@@ -166,9 +168,9 @@ void find_hull(InputIterator begin,
     if (it == segment_0 || it == segment_1 || it == farthest) {
       continue;
     }
-    if (orientation(*segment_0, *farthest, *it) == RightHandSide) {
+    if (orientation(*segment_0, *farthest, *it) != RightHandSide) {
       s1.push_back(wykobi::make_point(it->x, it->y));
-    } else if (orientation(*farthest, *segment_1, *it) == RightHandSide) {
+    } else if (orientation(*farthest, *segment_1, *it) != RightHandSide) {
       s2.push_back(wykobi::make_point(it->x, it->y));
     }
   }

@@ -33,11 +33,11 @@ struct convex_hull_chans_algorithm<point2d<T>> {
     }
 
     // Pick a point which is guaranteed to be on the convex hull
-    auto lowest_point = std::min_element(
+    auto highest_point = std::max_element(
         begin, end, [](const point2d<T> &a, const point2d<T> &b) -> bool {
           return a.y < b.y;
         });  // O(n) time
-    debug.first_point = *lowest_point;
+    debug.first_point = *highest_point;
 
     // This point is used for the Javis march but is not part of the point set
     auto p0 = make_point(-std::numeric_limits<T>::infinity(), T(0));
@@ -52,7 +52,7 @@ struct convex_hull_chans_algorithm<point2d<T>> {
 
       std::vector<point2d<T>> hull;
       hull.reserve(output_size_estimate);
-      hull.push_back(*lowest_point);
+      hull.push_back(*highest_point);
 
       // Split the set into ceil(n/m) subsets
       std::vector<std::vector<point2d<T>>> subsets;
@@ -81,11 +81,11 @@ struct convex_hull_chans_algorithm<point2d<T>> {
 
       // Use a modified version of the Jarvis march algorithm to compute the convex hull of the set
       point2d<T> p_i_m_1 = p0;
-      point2d<T> p_i = *lowest_point;
+      point2d<T> p_i = *highest_point;
       for (uint32_t i = 0; i < output_size_estimate; ++i) {
         // Use method from jarvis march to find the points in each hull
         // which form the largest angle between p_{i-1}, p_i and the point with
-        // p_i being the connecting point and p_0 being at -infinity in x
+        // p_i being the connecting point and p_0 being at infinity in x
         // (180 degrees) and p_1 being the lowest point in the set.
         std::vector<point2d<T>> jarvis_found_points;
         jarvis_found_points.reserve(hulls.size());
@@ -97,7 +97,7 @@ struct convex_hull_chans_algorithm<point2d<T>> {
         // the largest angle again between between p_{i-1}, p_i and the point
         point2d<T> p_i_p_1 = jarvis_binary_search(p_i_m_1, p_i, jarvis_found_points.cbegin(), jarvis_found_points.cend());
         debug_intermediate_found_point.push_back(p_i_p_1);
-        if (p_i_p_1 == *lowest_point) {
+        if (p_i_p_1 == *highest_point) {
           for (auto& p : hull) {
             (*out++) = p;
           }
@@ -118,7 +118,7 @@ struct convex_hull_chans_algorithm<point2d<T>> {
     point2d<T> current_point = a;
     for (auto it = begin; it != end; ++it)
     {
-      if (orientation(b, current_point, *it) == RightHandSide)
+      if (orientation(b, current_point, *it) != RightHandSide && !is_equal(b, *it))
       {
         current_point = *it;
       }

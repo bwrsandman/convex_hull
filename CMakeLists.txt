@@ -21,3 +21,5 @@ else()
   find_package(SDL2 REQUIRED)
   target_link_libraries(convex_hull PRIVATE SDL2::SDL2)
 endif()
+
+add_subdirectory(benchmarks)
