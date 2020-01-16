@@ -47,12 +47,40 @@ public:
 
   void add_point(T x, T y) { point_list.push_back(wykobi::make_point(x, y)); }
 
-  void generate_points(T x, T y, T width, T height, std::size_t max_points)
+  void add_collinear_points(const wykobi::rectangle<T>& rectangle,
+                            std::size_t max_points)
+  {
+    wykobi::segment2d segment;
+    segment[0] = wykobi::generate_random_point<T>(rectangle);
+    segment[1] = wykobi::generate_random_point<T>(rectangle);
+    generate_random_points(segment, max_points, std::back_inserter(point_list));
+  }
+
+  void add_near_collinear_points(const wykobi::rectangle<T>& rectangle,
+                                 std::size_t max_points)
+  {
+    wykobi::rectangle<T> epsilon_rect =
+      wykobi::make_rectangle<T>(-std::numeric_limits<T>::epsilon(),
+                                -std::numeric_limits<T>::epsilon(),
+                                std::numeric_limits<T>::epsilon(),
+                                std::numeric_limits<T>::epsilon());
+    wykobi::segment2d segment;
+    segment[0] = wykobi::generate_random_point<T>(rectangle);
+    segment[1] = wykobi::generate_random_point<T>(rectangle);
+    for (std::size_t i = 0; i < max_points; ++i) {
+      auto p = wykobi::generate_random_point<T>(segment);
+      auto offset = wykobi::generate_random_point(epsilon_rect);
+      point_list.push_back(wykobi::make_point(p.x + offset.x, p.y + offset.y));
+    }
+  }
+
+  void generate_points(const wykobi::rectangle<T>& rectangle,
+                       std::size_t max_points)
   {
     point_list.clear();
     point_list.reserve(point_list.size() + max_points);
     wykobi::generate_random_points<T>(
-      x, y, x + width, y + height, max_points, std::back_inserter(point_list));
+      rectangle, max_points, std::back_inserter(point_list));
   }
   void solve()
   {
@@ -138,7 +166,9 @@ public:
     wykobi::algorithm::convex_hull_melkman<wykobi::point2d<T>>(begin, end, out);
   }
 
-  uint32_t num_points_to_generate = 10;
+  int num_points_to_generate = 10;
+  int num_collinear_points_to_generate = 3;
+  int num_near_collinear_points_to_generate = 3;
 
 private:
   std::vector<wykobi::point2d<T>> point_list;
@@ -190,7 +220,7 @@ public:
     }
 
     window = SDL_CreateWindow(
-      "quickhull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 1280, 768, 0);
+      "Convex Hull", SDL_HINT_DEFAULT, SDL_HINT_DEFAULT, 1280, 768, 0);
     if (!window) {
       std::printf("Failed to create SDL window\n");
       terminate();
@@ -272,19 +302,56 @@ public:
       ImGui::EndCombo();
     }
 
-    ImGui::InputScalar("Amount of points to generate",
-                       ImGuiDataType_U32,
-                       &solver.num_points_to_generate);
     if (ImGui::Button("Generate Random point set")) {
-      solver.generate_points(width * 0.25f,
-                             height * 0.25f,
-                             width * 0.5f,
-                             height * 0.5f,
-                             solver.num_points_to_generate);
+      solver.generate_points(
+        wykobi::make_rectangle<double>(
+          width * 0.25f, height * 0.75f, width * 0.75f, height * 0.25f),
+        solver.num_points_to_generate);
       solver.solve();
     }
+    ImGui::SameLine();
+    ImGui::PushItemWidth(100);
+    ImGui::InputInt("##Amount of points to generate",
+                    &solver.num_points_to_generate);
+    ImGui::PopItemWidth();
+    if (solver.num_points_to_generate < 1) {
+      solver.num_points_to_generate = 1;
+    }
+
+    if (ImGui::Button("Add collinear points")) {
+      solver.add_collinear_points(
+        wykobi::make_rectangle<double>(
+          width * 0.25f, height * 0.75f, width * 0.75f, height * 0.25f),
+        solver.num_collinear_points_to_generate);
+      solver.solve();
+    }
+    ImGui::SameLine();
+    ImGui::PushItemWidth(100);
+    ImGui::InputInt("##Add collinear point count",
+                    &solver.num_collinear_points_to_generate);
+    ImGui::PopItemWidth();
+    if (solver.num_collinear_points_to_generate < 3) {
+      solver.num_collinear_points_to_generate = 3;
+    }
+
+    if (ImGui::Button("Add near-collinear points")) {
+      solver.add_near_collinear_points(
+        wykobi::make_rectangle<double>(
+          width * 0.25f, height * 0.75f, width * 0.75f, height * 0.25f),
+        solver.num_near_collinear_points_to_generate);
+      solver.solve();
+    }
+    ImGui::SameLine();
+    ImGui::PushItemWidth(100);
+    ImGui::InputInt("##Add near-collinear point count",
+                    &solver.num_near_collinear_points_to_generate);
+    ImGui::PopItemWidth();
+    if (solver.num_near_collinear_points_to_generate < 3) {
+      solver.num_near_collinear_points_to_generate = 3;
+    }
+
     if (ImGui::Button("Clear point set")) {
-      solver.generate_points(0, 0, 0, 0, 0);
+      solver.generate_points(wykobi::make_rectangle<double>(0, 0, 0, 0), 0);
       solver.solve();
     }
 
@@ -597,15 +664,15 @@ public:
       } else if (event.type == SDL_KEYDOWN && !renderer.ui_want_capture_keyboard()) {
         switch (event.key.keysym.scancode) {
           case SDL_SCANCODE_SPACE:
-            solver.generate_points(width * 0.25f,
-                                   height * 0.25f,
-                                   width * 0.5f,
-                                   height * 0.5f,
-                                   solver.num_points_to_generate);
+            solver.generate_points(
+              wykobi::make_rectangle<double>(
+                width * 0.25f, height * 0.75f, width * 0.75f, height * 0.25f),
+              solver.num_points_to_generate);
             solver.solve();
             break;
           case SDL_SCANCODE_BACKSPACE:
-            solver.generate_points(0, 0, 0, 0, 0);
+            solver.generate_points(wykobi::make_rectangle<double>(0, 0, 0, 0),
+                                   0);
             solver.solve();
             break;
           case SDL_SCANCODE_ESCAPE:
@@ -624,11 +691,10 @@ public:
 
     uint32_t width, height;
     renderer.resolution(width, height);
-    solver.generate_points(width * 0.25f,
-                           height * 0.25f,
-                           width * 0.5f,
-                           height * 0.5f,
-                           solver.num_points_to_generate);
+    solver.generate_points(
+      wykobi::make_rectangle<double>(
+        width * 0.25f, height * 0.75f, width * 0.75f, height * 0.25f),
+      solver.num_points_to_generate);
     solver.solve();
 
 #if __EMSCRIPTEN__
