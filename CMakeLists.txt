@@ -12,9 +12,9 @@ target_link_libraries(convex_hull PRIVATE wykobi imgui)
 if (EMSCRIPTEN)
   set_target_properties(convex_hull PROPERTIES
     COMPILE_FLAGS_DEBUG "-g4"
-    COMPILE_FLAGS "-s USE_SDL=2 --emrun"
+    COMPILE_FLAGS "-s USE_SDL=2 -s ASSERTIONS=1 -s ALLOW_MEMORY_GROWTH=1 --emrun"
     LINK_FLAGS_DEBUG "-g4"
-    LINK_FLAGS "-s USE_SDL=2 --emrun"
+    LINK_FLAGS "-s USE_SDL=2 -s ASSERTIONS=1 -s ALLOW_MEMORY_GROWTH=1 --emrun"
     SUFFIX ".html"
   )
 else()

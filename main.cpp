@@ -124,21 +124,38 @@ public:
         break;
     }
     auto duration = std::chrono::high_resolution_clock::now() - time_point;
-    using duration_format_t = std::chrono::duration<float, std::micro>;
+    using duration_format_t = std::chrono::duration<double, std::micro>;
     auto duration_us = std::chrono::duration_cast<duration_format_t>(duration);
-    auto rate = point_list.size() / duration_us.count() * 1000 * 1000;
-    const char* prefix = "";
-    constexpr std::array<std::string_view, 4> si_prefixes{ "K", "M", "G", "T" };
-    for (auto& i : si_prefixes) {
-      if (rate < 1000) {
-        break;
+    if (duration_us.count() < std::numeric_limits<double>::epsilon()) {
+      std::printf(
+        "%s took less time than the resolution of the clock for %zu points and "
+        "%zu points on hull. Try adding more points.\n",
+        algorithm_strings[static_cast<size_t>(selected_algorithm)].data(),
+        point_list.size(),
+        convex_hull.size());
+    } else {
+      auto rate = point_list.size() / duration_us.count() * 1000 * 1000;
+      const char* prefix = "";
+      constexpr std::array<std::string_view, 4> si_prefixes{
+        "K", "M", "G", "T"
+      };
+      for (auto& i : si_prefixes) {
+        if (rate < 1000) {
+          break;
+        }
+        rate /= 1000;
+        prefix = i.data();
       }
-      rate /= 1000;
-      prefix = i.data();
+      std::printf(
+        "%s took %.3f us for %zu points and %zu points on hull or %.2f%s "
+        "points/s\n",
+        algorithm_strings[static_cast<size_t>(selected_algorithm)].data(),
+        duration_us.count(),
+        point_list.size(),
+        convex_hull.size(),
+        rate,
+        prefix);
     }
-    std::printf("%s took %.3f us for %zu points and %zu points on hull or %.2f%s points/s\n",
-                algorithm_strings[static_cast<size_t>(selected_algorithm)].data(),
-                duration_us.count(), point_list.size(), convex_hull.size(), rate, prefix);
   }
 
   template<typename InputIterator, typename OutputIterator>
